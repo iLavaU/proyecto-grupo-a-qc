@@ -1,0 +1,4 @@
+FloodNet
+.venv/
+__pycache__/
+.vscode/

@@ -20,7 +20,7 @@ sys.path += ['.', '..']
 
 # Import project modules
 from config import Config
-from data import download_dataset, load_images, create_dataloaders
+from data import download_dataset, load_images_path, create_dataloaders
 from quantum import create_quantum_device
 from models import HybridQuantumClassifier
 from training import train_model, test_model, save_model, print_training_summary
@@ -80,136 +80,156 @@ def main():
     download_dataset()
     
     # Load images
-    images, labels_str, class_names = load_images(
+    images_path, labels_path, class_names = load_images_path(
         max_per_class=config.MAX_IMAGES_PER_CLASS
     )
     
     # Update config with actual number of classes
     config.N_CLASSES = len(class_names)
     
-    # Visualize sample images
-    print("\nVisualizing sample images...")
-    from data.loader import create_label_mapping, labels_to_numeric
-    label_to_idx = create_label_mapping(class_names)
-    labels_numeric = labels_to_numeric(labels_str, label_to_idx)
-    plot_sample_images(images, labels_numeric, class_names, n_samples=10)
-    
     # Create data loaders
     train_loader, val_loader, test_loader, label_to_idx = create_dataloaders(
-        images, labels_str, class_names, config
+        images_path, labels_path, class_names, config
     )
     
     print(f"\n✓ Data loading complete!")
     print(f"  Classes: {class_names}")
-    print(f"  Total samples: {len(images)}")
+    print(f"  Total samples: {len(images_path)}")
+    print(f"  Train samples: {len(train_loader.dataset)}")
+    print(f"  Validation samples: {len(val_loader.dataset)}")
+    print(f"  Test samples: {len(test_loader.dataset)}\n")
+
+    # Show 1 sample from the dataloaders
+    # Visualize sample images from training set
+    batch = next(iter(train_loader))
+    images, labels = batch
+    
+    # Plot first few samples
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+    axes = axes.flatten()
+    
+    for idx in range(min(10, len(images))):
+        img = images[idx].permute(1, 2, 0).numpy()
+        img = (img - img.min()) / (img.max() - img.min())
+        axes[idx].imshow(img)
+        axes[idx].set_title(class_names[labels[idx].item()])
+        axes[idx].axis('off')
+    
+    plt.tight_layout()
+    plt.savefig('sample_images.png', dpi=100, bbox_inches='tight')
+    plt.close()
+    print("✓ Sample images saved to 'sample_images.png'\n")
+
+    
     
     # ==================== QUANTUM DEVICE ====================
     
-    print("\n" + "=" * 60)
-    print("Step 3: Setting up Quantum Device")
-    print("=" * 60)
+#     print("\n" + "=" * 60)
+#     print("Step 3: Setting up Quantum Device")
+#     print("=" * 60)
     
-    quantum_device = create_quantum_device(
-        n_qubits=config.N_QUBITS,
-        device_name=config.DEVICE
-    )
+#     quantum_device = create_quantum_device(
+#         n_qubits=config.N_QUBITS,
+#         device_name=config.DEVICE
+#     )
     
-    # ==================== MODEL CREATION ====================
+#     # ==================== MODEL CREATION ====================
     
-    print("\n" + "=" * 60)
-    print("Step 4: Creating Hybrid Model")
-    print("=" * 60 + "\n")
+#     print("\n" + "=" * 60)
+#     print("Step 4: Creating Hybrid Model")
+#     print("=" * 60 + "\n")
     
-    model = HybridQuantumClassifier(config, quantum_device)
-    model.print_model_info()
+#     model = HybridQuantumClassifier(config, quantum_device)
+#     model.print_model_info()
     
-    # ==================== TRAINING ====================
+#     # ==================== TRAINING ====================
     
-    print("\n" + "=" * 60)
-    print("Step 5: Training")
-    print("=" * 60)
+#     print("\n" + "=" * 60)
+#     print("Step 5: Training")
+#     print("=" * 60)
     
-    model, trainer, training_time = train_model(
-        model, train_loader, val_loader, config
-    )
+#     model, trainer, training_time = train_model(
+#         model, train_loader, val_loader, config
+#     )
     
-    # ==================== TESTING ====================
+#     # ==================== TESTING ====================
     
-    print("\n" + "=" * 60)
-    print("Step 6: Testing")
-    print("=" * 60)
+#     print("\n" + "=" * 60)
+#     print("Step 6: Testing")
+#     print("=" * 60)
     
-    test_results = test_model(model, trainer, test_loader, class_names)
+#     test_results = test_model(model, trainer, test_loader, class_names)
     
-    # ==================== VISUALIZATION ====================
+#     # ==================== VISUALIZATION ====================
     
-    print("\n" + "=" * 60)
-    print("Step 7: Generating Visualizations")
-    print("=" * 60)
+#     print("\n" + "=" * 60)
+#     print("Step 7: Generating Visualizations")
+#     print("=" * 60)
     
-    visualize_results(test_results)
+#     visualize_results(test_results)
     
-    # ==================== SAVE MODEL ====================
+#     # ==================== SAVE MODEL ====================
     
-    print("\n" + "=" * 60)
-    print("Step 8: Saving Model")
-    print("=" * 60)
+#     print("\n" + "=" * 60)
+#     print("Step 8: Saving Model")
+#     print("=" * 60)
     
-    model_path = save_model(
-        model=model,
-        config=config,
-        class_names=class_names,
-        test_accuracy=test_results['accuracy'],
-        training_time=training_time
-    )
+#     model_path = save_model(
+#         model=model,
+#         config=config,
+#         class_names=class_names,
+#         test_accuracy=test_results['accuracy'],
+#         training_time=training_time
+#     )
     
-    # ==================== FINAL SUMMARY ====================
+#     # ==================== FINAL SUMMARY ====================
     
-    print_training_summary(model, test_results, training_time, config)
+#     print_training_summary(model, test_results, training_time, config)
     
-    print("\n" + "=" * 60)
-    print("PIPELINE COMPLETED SUCCESSFULLY!")
-    print("=" * 60)
-    print(f"\n✓ Model saved: {model_path}")
-    print(f"✓ Test Accuracy: {test_results['accuracy']:.4f} ({test_results['accuracy']*100:.2f}%)")
-    print(f"✓ Training Time: {training_time:.2f} seconds ({training_time/60:.2f} minutes)")
-    print("\nThank you for using the Hybrid Quantum Classifier!")
-    print("=" * 60 + "\n")
+#     print("\n" + "=" * 60)
+#     print("PIPELINE COMPLETED SUCCESSFULLY!")
+#     print("=" * 60)
+#     print(f"\n✓ Model saved: {model_path}")
+#     print(f"✓ Test Accuracy: {test_results['accuracy']:.4f} ({test_results['accuracy']*100:.2f}%)")
+#     print(f"✓ Training Time: {training_time:.2f} seconds ({training_time/60:.2f} minutes)")
+#     print("\nThank you for using the Hybrid Quantum Classifier!")
+#     print("=" * 60 + "\n")
 
 
-def quick_test():
-    """
-    Quick test function to verify all components work.
-    Run this to test the installation without full training.
-    """
-    print("\n" + "=" * 60)
-    print("QUICK TEST MODE")
-    print("=" * 60 + "\n")
+# def quick_test():
+#     """
+#     Quick test function to verify all components work.
+#     Run this to test the installation without full training.
+#     """
+#     print("\n" + "=" * 60)
+#     print("QUICK TEST MODE")
+#     print("=" * 60 + "\n")
     
-    # Test imports
-    print("Testing imports...")
-    from config import Config
-    from quantum import create_quantum_device, print_encoding_options, print_circuit_options
-    print("✓ All imports successful\n")
+#     # Test imports
+#     print("Testing imports...")
+#     from config import Config
+#     from quantum import create_quantum_device, print_encoding_options, print_circuit_options
+#     print("✓ All imports successful\n")
     
-    # Test configuration
-    print("Testing configuration...")
-    config = Config()
-    config.print_config()
+#     # Test configuration
+#     print("Testing configuration...")
+#     config = Config()
+#     config.print_config()
     
-    # Test quantum device
-    print("Testing quantum device...")
-    device = create_quantum_device(4, 'default.qubit')
-    print("✓ Quantum device created\n")
+#     # Test quantum device
+#     print("Testing quantum device...")
+#     device = create_quantum_device(4, 'default.qubit')
+#     print("✓ Quantum device created\n")
     
-    # Show available options
-    print_encoding_options()
-    print_circuit_options()
+#     # Show available options
+#     print_encoding_options()
+#     print_circuit_options()
     
-    print("\n" + "=" * 60)
-    print("QUICK TEST COMPLETED SUCCESSFULLY!")
-    print("=" * 60 + "\n")
-    print("You can now run the full training with: python main.py")
+#     print("\n" + "=" * 60)
+#     print("QUICK TEST COMPLETED SUCCESSFULLY!")
+#     print("=" * 60 + "\n")
+#     print("You can now run the full training with: python main.py")
 
 
 if __name__ == "__main__":
