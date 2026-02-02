@@ -148,9 +148,10 @@ def create_dataloaders(images_path, labels_path, class_names, config):
     print(f"\nLabel mapping: {label_to_idx}")
 
     # Create dataset
-    transform = FloodNetDataset.get_default_transform(image_size=config.IMAGE_SIZE)
-    full_dataset = FloodNetDataset(images_path, labels_path, transform=transform)
-    
+    images_transform = FloodNetDataset.get_image_transform(image_size=config.IMAGE_SIZE)
+    labels_transform = FloodNetDataset.get_label_transform(image_size=config.IMAGE_SIZE)
+    full_dataset = FloodNetDataset(images_path, labels_path, images_transform, labels_transform)
+
     # Calculate split sizes
     total_size = len(full_dataset)
     train_size = int(config.TRAIN_RATIO * total_size)

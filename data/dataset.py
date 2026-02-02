@@ -1,16 +1,20 @@
 """
-EuroSAT Dataset class for satellite image classification
+FloodNet Dataset Module
+=======================
 """
 
+from email.mime import image
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image
 
+from config import settings
+
 
 class FloodNetDataset(Dataset):
     """
-    PyTorch Dataset for EuroSAT satellite imagery.
+    PyTorch Dataset for FloodNet satellite imagery.
 
     This dataset loads satellite images directly without dimensionality reduction,
     allowing the CNN to extract features from the raw images.
@@ -21,22 +25,27 @@ class FloodNetDataset(Dataset):
         transform (callable, optional): Transform to apply to images
     """
 
-    def __init__(self, images_paths, labels_paths, transform=None):
+    def __init__(self, images_paths, labels_paths, image_transforms=None, label_transforms=None):
         """
         Initialize the dataset.
 
         Args:
             images_paths: List or array of image file paths
             labels_paths: List or array of corresponding label file paths
-            transform: Optional torchvision transforms
+            image_transforms: Optional torchvision transforms for images
+            label_transforms: Optional torchvision transforms for labels
         """
         self.images_paths = images_paths
         self.labels_paths = labels_paths
-        self.transform = transform
+        self.image_transforms = image_transforms
+        self.label_transforms = label_transforms
 
         # Default transform if none provided
-        if self.transform is None:
-            self.transform = self.get_default_transform()
+        if self.image_transforms is None:
+            self.image_transforms = self.get_image_transform()
+
+        if self.label_transforms is None:
+            self.label_transforms = self.get_label_transform()
 
     def __len__(self):
         """Return the total number of samples"""
@@ -50,7 +59,7 @@ class FloodNetDataset(Dataset):
             idx: Index of the sample to retrieve
 
         Returns:
-            tuple: (image_tensor, label) where image_tensor is a torch.Tensor
+            tuple: (image_tensor, label_tensor) where both are torch.Tensor
         """
         # Load image and label
         img_path = self.images_paths[idx]
@@ -59,32 +68,27 @@ class FloodNetDataset(Dataset):
         img = Image.open(img_path).convert("RGB")
         mask = Image.open(label_path).convert("L")  # Assuming label is a grayscale mask
 
-        # Apply transforms
-        if self.transform:
-            img = self.transform(img)
+        # Apply transforms to image and label
+        if self.image_transforms:
+            img = self.image_transforms(img)
+        if self.label_transforms:
+            mask = self.label_transforms(mask)
 
         return img, mask
 
     @staticmethod
-    def get_default_transform(image_size=(64, 64)):
-        """
-        Get default image transformations.
-
-        This includes:
-        1. Converting numpy array to PIL Image
-        2. Resizing to target size
-        3. Converting to tensor
-        4. Normalizing with ImageNet statistics
-
-        Args:
-            image_size: Target image size (height, width)
-
-        Returns:
-            transforms.Compose: Composition of transforms
-        """
+    def get_label_transform(image_size=(64, 64)):
         return transforms.Compose(
             [
-                transforms.ToPILImage(),
+                transforms.Resize(image_size),
+                transforms.ToTensor(),
+            ]
+        )
+
+    @staticmethod
+    def get_image_transform(image_size=(64, 64)):
+        return transforms.Compose(
+            [
                 transforms.Resize(image_size),
                 transforms.ToTensor(),
                 # ImageNet normalization (standard for pre-trained models)

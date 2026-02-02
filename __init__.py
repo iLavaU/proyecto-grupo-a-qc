@@ -8,6 +8,6 @@ neural network for land use classification.
 __version__ = "1.0.0"
 __author__ = "Hybrid Quantum Classifier Team"
 
-from .config import Config, config
+from .config import Config, settings
 
-__all__ = ['Config', 'config']
+__all__ = ['Config', 'settings']

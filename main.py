@@ -98,30 +98,6 @@ def main():
     print(f"  Train samples: {len(train_loader.dataset)}")
     print(f"  Validation samples: {len(val_loader.dataset)}")
     print(f"  Test samples: {len(test_loader.dataset)}\n")
-
-    # Show 1 sample from the dataloaders
-    # Visualize sample images from training set
-    batch = next(iter(train_loader))
-    images, labels = batch
-    
-    # Plot first few samples
-    import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(2, 5, figsize=(15, 6))
-    axes = axes.flatten()
-    
-    for idx in range(min(10, len(images))):
-        img = images[idx].permute(1, 2, 0).numpy()
-        img = (img - img.min()) / (img.max() - img.min())
-        axes[idx].imshow(img)
-        axes[idx].set_title(class_names[labels[idx].item()])
-        axes[idx].axis('off')
-    
-    plt.tight_layout()
-    plt.savefig('sample_images.png', dpi=100, bbox_inches='tight')
-    plt.close()
-    print("✓ Sample images saved to 'sample_images.png'\n")
-
-    
     
     # ==================== QUANTUM DEVICE ====================
     
