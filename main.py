@@ -20,7 +20,7 @@ sys.path += ['.', '..']
 
 # Import project modules
 from config import Config
-from data import download_eurosat, load_images, create_dataloaders
+from data import download_dataset, load_images, create_dataloaders
 from quantum import create_quantum_device
 from models import HybridQuantumClassifier
 from training import train_model, test_model, save_model, print_training_summary
@@ -77,7 +77,7 @@ def main():
     print("=" * 60 + "\n")
     
     # Download dataset if needed
-    download_eurosat()
+    download_dataset()
     
     # Load images
     images, labels_str, class_names = load_images(

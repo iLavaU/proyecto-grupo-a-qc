@@ -2,12 +2,12 @@
 Data module for EuroSAT dataset loading and processing
 """
 
-from .dataset import EuroSATDataset
-from .loader import download_eurosat, load_images, create_dataloaders
+from .dataset import FloodNetDataset
+from .loader import download_dataset, load_images, create_dataloaders
 
 __all__ = [
-    'EuroSATDataset',
-    'download_eurosat',
+    'FloodNetDataset',
+    'download_dataset',
     'load_images',
     'create_dataloaders'
 ]

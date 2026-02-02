@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 
 
-class EuroSATDataset(Dataset):
+class FloodNetDataset(Dataset):
     """
     PyTorch Dataset for EuroSAT satellite imagery.
     

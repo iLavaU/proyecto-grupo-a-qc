@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 
 from config import Config
-from data import download_eurosat, load_images, create_dataloaders
+from data import download_dataset, load_images, create_dataloaders
 from quantum import create_quantum_device
 from models import HybridQuantumClassifier
 
@@ -59,7 +59,7 @@ class OptunaHybridTuner:
         
         # Load data once (reused across trials)
         print("Loading dataset for hyperparameter tuning...")
-        download_eurosat()
+        download_dataset()
         self.images, self.labels, self.class_names = load_images(
             max_per_class=self.base_config.MAX_IMAGES_PER_CLASS
         )

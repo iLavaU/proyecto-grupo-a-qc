@@ -11,15 +11,11 @@ from PIL import Image
 import torch
 from torch.utils.data import DataLoader, random_split
 
-from .dataset import EuroSATDataset
+from dataset import FloodNetDataset
 
-
-def download_eurosat(data_dir="EuroSAT"):
+def download_dataset(data_dir="FloodNet"):
     """
-    Download the EuroSAT dataset if not already present.
-    
-    The dataset contains RGB satellite images from Sentinel-2 satellite,
-    organized into 10 land use classes.
+    Download the FloodNet dataset if not already present.
     
     Args:
         data_dir: Directory where the dataset will be stored
@@ -28,11 +24,11 @@ def download_eurosat(data_dir="EuroSAT"):
         print(f"Dataset already available at: {data_dir}")
         return
     
-    # EuroSAT dataset URL
-    url = "http://madm.dfki.de/files/sentinel/EuroSAT.zip"
-    zip_path = "EuroSAT.zip"
+    # FloodNet dataset URL
+    url = "https://www.dropbox.com/scl/fo/k33qdif15ns2qv2jdxvhx/ANGaa8iPRhvlrvcKXjnmNRc?rlkey=ao2493wzl1cltonowjdbrnp7f&e=4&dl=1"
+    zip_path = "FloodNet.zip"
     
-    print("Downloading EuroSAT dataset (~90MB)...")
+    print("Downloading FloodNet dataset ...")
     print(f"URL: {url}")
     
     # Download with progress bar
@@ -181,10 +177,10 @@ def create_dataloaders(images, labels, class_names, config):
     labels_numeric = labels_to_numeric(labels, label_to_idx)
     
     # Create dataset
-    transform = EuroSATDataset.get_default_transform(
+    transform = FloodNetDataset.get_default_transform(
         image_size=config.IMAGE_SIZE
     )
-    full_dataset = EuroSATDataset(images, labels_numeric, transform=transform)
+    full_dataset = FloodNetDataset(images, labels_numeric, transform=transform)
     
     # Calculate split sizes
     total_size = len(full_dataset)
