@@ -19,8 +19,8 @@ class FloodNetDataset(Dataset):
     allowing the CNN to extract features from the raw images.
 
     Args:
-        images_paths (numpy.ndarray): Array of images paths
-        labels_paths (numpy.ndarray): Array of labels paths
+        images_paths (list[Path]): List of images paths
+        labels_paths (list[Path]): List of labels paths
         image_transforms (callable, optional): Transform to apply to images
         label_transforms (callable, optional): Transform to apply to labels
     """
