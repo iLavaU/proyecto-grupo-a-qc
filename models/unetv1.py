@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import pennylane as qml
 from pytorch_lightning import LightningModule
 
+
 n_qubits = 4
 n_layers = 1
 dev = qml.device("default.qubit", wires=n_qubits)
@@ -15,18 +16,23 @@ def quantum_circuit(inputs, weights):
     for l in range(n_layers):
         for i in range(n_qubits):
             qml.RY(weights[l, i], wires=i)
-        for i in range(n_qubits-1):
-            qml.CNOT(wires=[i, i+1])
+        for i in range(n_qubits - 1):
+            qml.CNOT(wires=[i, i + 1])
     return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
 
 class QuantumLayer(nn.Module):
     def __init__(self):
         super().__init__()
         self.weights = nn.Parameter(0.01 * torch.randn(n_layers, n_qubits))
+
     def forward(self, x):
+        device = x.device
+        dtype = x.dtype
         q_out = []
         for xi in x:
-            q_out.append(torch.tensor(quantum_circuit(xi, self.weights), dtype=torch.float32))
+            qc_out = quantum_circuit(xi, self.weights)
+            qc_out = torch.stack(qc_out).to(device=device, dtype=dtype)
+            q_out.append(qc_out)
         return torch.stack(q_out)
 
 class ConvBlock(nn.Module):
@@ -38,6 +44,7 @@ class ConvBlock(nn.Module):
             nn.Conv2d(out_ch, out_ch, 3, padding=1),
             nn.ReLU()
         )
+
     def forward(self, x):
         return self.conv(x)
 
@@ -90,129 +97,46 @@ class HybridUNet(LightningModule):
         return out
 
     def training_step(self, batch, batch_idx):
-        """
-        Training step (called by PyTorch Lightning).
-
-        Args:
-            batch: Tuple of (images, labels)
-            batch_idx: Index of the current batch
-
-        Returns:
-            Loss value for this batch
-        """
         x, y = batch
-
-        # Forward pass
         y_hat = self(x)
-
-        # Compute loss
         loss = self.criterion(y_hat, y)
-
-        # Compute accuracy
         preds = torch.argmax(y_hat, dim=1)
         acc = (preds == y).float().mean()
-
-        # Log metrics (visible in progress bar and logger)
-        self.log('train_loss', loss, prog_bar=True)
-        self.log('train_acc', acc, prog_bar=True)
-
+        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_acc", acc, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        """
-        Validation step (called by PyTorch Lightning).
-
-        Args:
-            batch: Tuple of (images, labels)
-            batch_idx: Index of the current batch
-
-        Returns:
-            Loss value for this batch
-        """
         x, y = batch
-
-        # Forward pass
         y_hat = self(x)
-
-        # Compute loss
         loss = self.criterion(y_hat, y)
-
-        # Compute accuracy
         preds = torch.argmax(y_hat, dim=1)
         acc = (preds == y).float().mean()
-
-        # Log metrics
-        self.log('val_loss', loss, prog_bar=True)
-        self.log('val_acc', acc, prog_bar=True)
-
-        # Store predictions for later analysis
-        self.validation_step_outputs.append({
-            'preds': preds,
-            'targets': y
-        })
-
+        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_acc", acc, prog_bar=True)
+        self.validation_step_outputs.append({"preds": preds, "targets": y})
         return loss
 
     def test_step(self, batch, batch_idx):
-        """
-        Test step (called by PyTorch Lightning).
-
-        Args:
-            batch: Tuple of (images, labels)
-            batch_idx: Index of the current batch
-
-        Returns:
-            Loss value for this batch
-        """
         x, y = batch
-
-        # Forward pass
         y_hat = self(x)
-
-        # Compute loss
         loss = self.criterion(y_hat, y)
-
-        # Compute accuracy
         preds = torch.argmax(y_hat, dim=1)
         acc = (preds == y).float().mean()
-
-        # Log metrics
-        self.log('test_loss', loss)
-        self.log('test_acc', acc)
-
-        # Store predictions for confusion matrix and report
-        self.test_step_outputs.append({
-            'preds': preds,
-            'targets': y
-        })
-
+        self.log("test_loss", loss)
+        self.log("test_acc", acc)
+        self.test_step_outputs.append({"preds": preds, "targets": y})
         return loss
 
     def configure_optimizers(self):
-        """
-        Configure optimizer and learning rate scheduler.
-
-        Returns:
-            dict: Optimizer and scheduler configuration
-        """
-        # Adam optimizer (works well for both classical and quantum parameters)
-        optimizer = torch.optim.Adam(
-            self.parameters(),
-            lr=self.config.LEARNING_RATE
-        )
-
-        # Learning rate scheduler: reduce LR when validation loss plateaus
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.config.LEARNING_RATE)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode='min',
-            factor=0.5,  # Reduce LR by half
-            patience=5  # Wait 5 epochs before reducing
+            optimizer, mode="min", factor=0.5, patience=5
         )
-
         return {
-            'optimizer': optimizer,
-            'lr_scheduler': {
-                'scheduler': scheduler,
-                'monitor': 'val_loss'  # Monitor validation loss
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_loss"
             }
         }

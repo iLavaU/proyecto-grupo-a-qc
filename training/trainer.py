@@ -64,7 +64,7 @@ def train_model(model, train_loader, val_loader, config):
         devices=1,                       # Use 1 device
         log_every_n_steps=10,           # Log metrics every 10 steps
         enable_progress_bar=True,       # Show progress bar
-        deterministic=True,             # For reproducibility
+        deterministic=False,             # For reproducibility
     )
     
     # Print model architecture
