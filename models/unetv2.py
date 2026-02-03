@@ -2,48 +2,46 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pennylane as qml
-import numpy as np
+from pytorch_lightning import LightningModule
+from torchmetrics.classification import MulticlassF1Score, MulticlassAccuracy
+from utils.metrics import compute_metrics
 
-n_qubits = 8
-n_layers_conv = 2
-n_layers_pool = 1
+n_qubits = 4
+n_layers = 1
 dev = qml.device("default.qubit", wires=n_qubits)
 
-def conv_block(params, wires):
-    for i in range(len(wires)-1):
-        qml.RZ(params[i,0], wires=wires[i])
-        qml.RY(params[i,1], wires=wires[i+1])
-        qml.CNOT(wires=[wires[i], wires[i+1]])
-        qml.RY(params[i,2], wires=wires[i+1])
-
-def pool_block(params, sources, sinks):
-    for s, t in zip(sources, sinks):
-        qml.RZ(params[0], wires=s)
-        qml.RY(params[1], wires=t)
-        qml.CNOT(wires=[s,t])
-        qml.RY(params[2], wires=t)
 
 @qml.qnode(dev, interface="torch")
-def quantum_circuit(inputs, conv_params, pool_params):
+def quantum_circuit(inputs, weights):
     for i in range(n_qubits):
+        qml.RX(inputs[i], wires=i)
         qml.RY(inputs[i], wires=i)
-    for l in range(n_layers_conv):
-        conv_block(conv_params[l], range(n_qubits))
-    pool_block(pool_params[0], [0,1,2,3], [4,5,6,7])
-    pool_block(pool_params[1], [0,1], [2,3])
-    pool_block(pool_params[2], [0], [1])
+        qml.RZ(inputs[i], wires=i)
+
+    for l in range(n_layers):
+        for i in range(n_qubits):
+            qml.RX(weights[l, i, 0], wires=i)
+            qml.RY(weights[l, i, 1], wires=i)
+        for i in range(n_qubits - 1):
+            qml.CNOT(wires=[i, i + 1])
+
     return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
+
 
 class QuantumLayer(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv_params = nn.Parameter(0.01 * torch.randn(n_layers_conv, n_qubits-1,3))
-        self.pool_params = nn.Parameter(0.01 * torch.randn(3,3))
+        self.weights = nn.Parameter(0.01 * torch.randn(n_layers, n_qubits, 2))
+
     def forward(self, x):
-        q_out = []
+        device, dtype = x.device, x.dtype
+        outputs = []
         for xi in x:
-            q_out.append(torch.tensor(quantum_circuit(xi, self.conv_params, self.pool_params), dtype=torch.float32))
-        return torch.stack(q_out)
+            q_out = quantum_circuit(xi, self.weights)
+            q_out = torch.stack(q_out).to(device=device, dtype=dtype)
+            outputs.append(q_out)
+        return torch.stack(outputs)
+
 
 class ConvBlock(nn.Module):
     def __init__(self, in_ch, out_ch):
@@ -52,39 +50,123 @@ class ConvBlock(nn.Module):
             nn.Conv2d(in_ch, out_ch, 3, padding=1),
             nn.ReLU(),
             nn.Conv2d(out_ch, out_ch, 3, padding=1),
-            nn.ReLU()
+            nn.ReLU(),
         )
+
     def forward(self, x):
         return self.conv(x)
 
-class HybridUNet(nn.Module):
-    def __init__(self, in_ch=3, out_ch=3):
+
+class HybridUNet(LightningModule):
+    def __init__(self, config, in_ch=3, out_ch=3):
         super().__init__()
-        self.enc1 = ConvBlock(in_ch,8)
-        self.enc2 = ConvBlock(8,16)
-        self.enc3 = ConvBlock(16,32)
+        self.config = config
+        self.num_classes = out_ch
+
+        # Métricas
+        self.train_f1 = MulticlassF1Score(num_classes=out_ch, average="macro")
+        self.val_f1 = MulticlassF1Score(num_classes=out_ch, average="macro")
+        self.test_f1 = MulticlassF1Score(num_classes=out_ch, average="macro")
+
+        self.train_acc = MulticlassAccuracy(num_classes=out_ch)
+        self.val_acc = MulticlassAccuracy(num_classes=out_ch)
+        self.test_acc = MulticlassAccuracy(num_classes=out_ch)
+
+        # Encoder
+        self.enc1 = ConvBlock(in_ch, 8)
+        self.enc2 = ConvBlock(8, 16)
+        self.enc3 = ConvBlock(16, 32)
         self.pool = nn.MaxPool2d(2)
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((2,2))
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))
+
+        # Quantum
         self.qc = QuantumLayer()
-        self.fc_expand = nn.Linear(n_qubits,32*2*2)
-        self.dec3 = ConvBlock(32+32,16)
-        self.dec2 = ConvBlock(16+16,8)
-        self.dec1 = nn.Conv2d(8,out_ch,1)
+        self.fc_latent = nn.Linear(32 * 4 * 4, n_qubits)
+        self.fc_expand = nn.Linear(n_qubits, 32 * 4 * 4)
+
+        # Decoder
+        self.dec3 = ConvBlock(32 + 32, 16)
+        self.dec2 = ConvBlock(16 + 16, 8)
+        self.dec1 = nn.Conv2d(8, out_ch, 1)
+
+        self.criterion = nn.CrossEntropyLoss()
+
+    # ------------------------ Forward ------------------------
     def forward(self, x):
         x1 = self.enc1(x)
         x2 = self.enc2(self.pool(x1))
         x3 = self.enc3(self.pool(x2))
-        B,C,H,W = x3.shape
-        x3p = self.adaptive_pool(x3)
-        x_flat = x3p.view(B,-1)[:,:n_qubits]
-        x_q = self.qc(x_flat)
-        x_latent = self.fc_expand(x_q).view(B,32,2,2)
-        x_up = F.interpolate(x_latent,size=x3.size()[2:], mode='nearest')
-        x_up = torch.cat([x_up,x3],dim=1)
-        x_up = self.dec3(x_up)
-        x_up = F.interpolate(x_up,size=x2.size()[2:], mode='nearest')
-        x_up = torch.cat([x_up,x2],dim=1)
-        x_up = self.dec2(x_up)
-        x_up = F.interpolate(x_up,size=x1.size()[2:], mode='nearest')
+
+        B, C, H, W = x3.shape
+        x3_pooled = self.adaptive_pool(x3)
+        x_flat = x3_pooled.view(B, -1)
+
+        x_qin = torch.tanh(self.fc_latent(x_flat)) * torch.pi
+        x_qout = self.qc(x_qin)
+        x_latent = self.fc_expand(x_qout).view(B, 32, 4, 4)
+
+        x_up = F.interpolate(x_latent, size=x3.shape[2:], mode="nearest")
+        x_up = self.dec3(torch.cat([x_up, x3], dim=1))
+        x_up = F.interpolate(x_up, size=x2.shape[2:], mode="nearest")
+        x_up = self.dec2(torch.cat([x_up, x2], dim=1))
+        x_up = F.interpolate(x_up, size=x1.shape[2:], mode="nearest")
         out = self.dec1(x_up)
-        return torch.sigmoid(out)
+        return out
+
+    # ------------------------ Training ------------------------
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.criterion(y_hat, y)
+
+        preds = torch.argmax(y_hat, dim=1)
+        f1 = self.train_f1(preds, y)
+        acc = self.train_acc(preds, y)
+
+        self.log("train_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("train_f1", f1, prog_bar=True, on_epoch=True)
+        self.log("train_acc", acc, prog_bar=True, on_epoch=True)
+
+        return loss
+
+    # ------------------------ Validation ------------------------
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.criterion(y_hat, y)
+
+        preds = torch.argmax(y_hat, dim=1)
+        f1 = self.val_f1(preds, y)
+        acc = self.val_acc(preds, y)
+
+        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("val_f1", f1, prog_bar=True, on_epoch=True)
+        self.log("val_acc", acc, prog_bar=True, on_epoch=True)
+
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.criterion(y_hat, y)
+
+        # Usar métricas personalizadas
+        metrics = compute_metrics(y_hat, y, self.num_classes)
+
+        self.log("test_loss", loss, on_epoch=True)
+        self.log("test_iou", metrics["IoU"], on_epoch=True)
+        self.log("test_f1", metrics["F1 Score"], on_epoch=True)
+        self.log("test_acc", metrics["Pixel Accuracy"], on_epoch=True)
+
+        return loss
+
+    # ------------------------ Optimizer ------------------------
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.config.LEARNING_RATE)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=5
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {"scheduler": scheduler, "monitor": "val_loss"},
+        }

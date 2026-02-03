@@ -63,7 +63,7 @@ def main():
     config.print_config()
 
     # Set random seeds for reproducibility
-    #set_random_seeds(42)
+    set_random_seeds(42)
     #print("✓ Random seeds set for reproducibility\n")
 
     # Check for GPU
@@ -139,10 +139,15 @@ def main():
     print("Step 6: Testing")
     print("=" * 60)
 
-    class_names = list(label_to_idx_map.items())
+    class_names = list(label_to_idx_map.keys())
 
-    test_results = test_model(model, trainer, test_loader, class_names)
-
+    test_results = trainer.test(model, test_loader)
+    
+    test_metrics = {
+        'accuracy': test_results[0]['test_acc'],
+        'f1_score': test_results[0]['test_f1'],
+        'iou': test_results[0].get('test_iou', 0)
+    }
 #     # ==================== VISUALIZATION ====================
 
     print("\n" + "=" * 60)
@@ -161,9 +166,12 @@ def main():
         model=model,
         config=config,
         class_names=class_names,
-        test_accuracy=test_results['accuracy'],
+        test_accuracy=test_metrics['accuracy'],
+        test_f1=test_metrics['f1_score'],
+        test_iou=test_metrics['iou'],
         training_time=training_time
     )
+
 
 #     # ==================== FINAL SUMMARY ====================
 

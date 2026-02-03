@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchmetrics.classification import MulticlassF1Score, MulticlassAccuracy
 import pennylane as qml
 from pytorch_lightning import LightningModule
+from utils.metrics import compute_metrics
 
 
 n_qubits = 4
@@ -51,83 +53,107 @@ class ConvBlock(nn.Module):
 class HybridUNet(LightningModule):
     def __init__(self, config, in_ch=3, out_ch=3):
         super().__init__()
+        self.config = config
+        self.num_classes = out_ch
 
-        self.config=config
+        # Métricas
+        self.train_f1 = MulticlassF1Score(num_classes=out_ch, average="macro")
+        self.val_f1 = MulticlassF1Score(num_classes=out_ch, average="macro")
+        self.test_f1 = MulticlassF1Score(num_classes=out_ch, average="macro")
 
-        # Storage for validation and test outputs
-        self.validation_step_outputs = []
-        self.test_step_outputs = []
+        self.train_acc = MulticlassAccuracy(num_classes=out_ch)
+        self.val_acc = MulticlassAccuracy(num_classes=out_ch)
+        self.test_acc = MulticlassAccuracy(num_classes=out_ch)
 
+        # Encoder
         self.enc1 = ConvBlock(in_ch, 8)
         self.enc2 = ConvBlock(8, 16)
         self.enc3 = ConvBlock(16, 32)
         self.pool = nn.MaxPool2d(2)
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((4,4))
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))
+
+        # Quantum
         self.qc = QuantumLayer()
-        self.fc_latent = nn.Linear(32*4*4, n_qubits)
-        self.fc_expand = nn.Linear(n_qubits, 32*4*4)
-        self.dec3 = ConvBlock(32+32, 16)
-        self.dec2 = ConvBlock(16+16, 8)
+        self.fc_latent = nn.Linear(32 * 4 * 4, n_qubits)
+        self.fc_expand = nn.Linear(n_qubits, 32 * 4 * 4)
+
+        # Decoder
+        self.dec3 = ConvBlock(32 + 32, 16)
+        self.dec2 = ConvBlock(16 + 16, 8)
         self.dec1 = nn.Conv2d(8, out_ch, 1)
+
         self.criterion = nn.CrossEntropyLoss()
 
+    # ------------------------ Forward ------------------------
     def forward(self, x):
         x1 = self.enc1(x)
         x2 = self.enc2(self.pool(x1))
         x3 = self.enc3(self.pool(x2))
 
-        B,C,H,W = x3.shape
+        B, C, H, W = x3.shape
         x3_pooled = self.adaptive_pool(x3)
-        x_flat = x3_pooled.view(B,-1)
-        x_qin = self.fc_latent(x_flat)
+        x_flat = x3_pooled.view(B, -1)
+
+        x_qin = torch.tanh(self.fc_latent(x_flat)) * torch.pi
         x_qout = self.qc(x_qin)
-        x_latent = self.fc_expand(x_qout).view(B,32,4,4)
+        x_latent = self.fc_expand(x_qout).view(B, 32, 4, 4)
 
-        x_up = F.interpolate(x_latent, size=x3.size()[2:], mode='nearest')
-        x_up = torch.cat([x_up, x3], dim=1)
-        x_up = self.dec3(x_up)
-
-        x_up = F.interpolate(x_up, size=x2.size()[2:], mode='nearest')
-        x_up = torch.cat([x_up, x2], dim=1)
-        x_up = self.dec2(x_up)
-
-        x_up = F.interpolate(x_up, size=x1.size()[2:], mode='nearest')
+        x_up = F.interpolate(x_latent, size=x3.shape[2:], mode="nearest")
+        x_up = self.dec3(torch.cat([x_up, x3], dim=1))
+        x_up = F.interpolate(x_up, size=x2.shape[2:], mode="nearest")
+        x_up = self.dec2(torch.cat([x_up, x2], dim=1))
+        x_up = F.interpolate(x_up, size=x1.shape[2:], mode="nearest")
         out = self.dec1(x_up)
-
         return out
 
+    # ------------------------ Training ------------------------
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
+
         preds = torch.argmax(y_hat, dim=1)
-        acc = (preds == y).float().mean()
-        self.log("train_loss", loss, prog_bar=True)
-        self.log("train_acc", acc, prog_bar=True)
+        f1 = self.train_f1(preds, y)
+        acc = self.train_acc(preds, y)
+
+        self.log("train_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("train_f1", f1, prog_bar=True, on_epoch=True)
+        self.log("train_acc", acc, prog_bar=True, on_epoch=True)
+
         return loss
 
+    # ------------------------ Validation ------------------------
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
+
         preds = torch.argmax(y_hat, dim=1)
-        acc = (preds == y).float().mean()
-        self.log("val_loss", loss, prog_bar=True)
-        self.log("val_acc", acc, prog_bar=True)
-        self.validation_step_outputs.append({"preds": preds, "targets": y})
+        f1 = self.val_f1(preds, y)
+        acc = self.val_acc(preds, y)
+
+        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
+        self.log("val_f1", f1, prog_bar=True, on_epoch=True)
+        self.log("val_acc", acc, prog_bar=True, on_epoch=True)
+
         return loss
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
-        preds = torch.argmax(y_hat, dim=1)
-        acc = (preds == y).float().mean()
-        self.log("test_loss", loss)
-        self.log("test_acc", acc)
-        self.test_step_outputs.append({"preds": preds, "targets": y})
+
+        # Usar métricas personalizadas
+        metrics = compute_metrics(y_hat, y, self.num_classes)
+
+        self.log("test_loss", loss, on_epoch=True)
+        self.log("test_iou", metrics["IoU"], on_epoch=True)
+        self.log("test_f1", metrics["F1 Score"], on_epoch=True)
+        self.log("test_acc", metrics["Pixel Accuracy"], on_epoch=True)
+
         return loss
 
+    # ------------------------ Optimizer ------------------------
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.config.LEARNING_RATE)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -135,8 +161,5 @@ class HybridUNet(LightningModule):
         )
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "monitor": "val_loss"
-            }
+            "lr_scheduler": {"scheduler": scheduler, "monitor": "val_loss"},
         }

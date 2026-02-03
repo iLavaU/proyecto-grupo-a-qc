@@ -6,23 +6,13 @@ import time
 import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from sklearn.metrics import accuracy_score, f1_score
+from utils.metrics import compute_metrics  # <- importamos tus métricas personalizadas
 
 
 def train_model(model, train_loader, val_loader, config):
     """
     Train the hybrid quantum classifier.
-    
-    Uses PyTorch Lightning Trainer for automatic training loop,
-    GPU support, logging, and callbacks.
-    
-    Args:
-        model: HybridQuantumClassifier instance
-        train_loader: DataLoader for training data
-        val_loader: DataLoader for validation data
-        config: Configuration object
-        
-    Returns:
-        tuple: (trained_model, trainer, training_time)
     """
     print("\n" + "=" * 60)
     print("TRAINING STARTED")
@@ -36,48 +26,40 @@ def train_model(model, train_loader, val_loader, config):
     print(f"Batch Size: {config.BATCH_SIZE}")
     print(f"Learning Rate: {config.LEARNING_RATE}")
     print("=" * 60 + "\n")
-    
-    # Setup callbacks
-    
-    # Early Stopping: stop training if validation loss doesn't improve
+
+    # Callbacks
     early_stopping = EarlyStopping(
-        monitor='val_loss',           # Metric to monitor
-        patience=config.PATIENCE,      # Number of epochs to wait
-        mode='min',                    # Stop when monitored metric stops decreasing
+        monitor='val_loss',
+        patience=config.PATIENCE,
+        mode='min',
         verbose=True
     )
-    
-    # Model Checkpoint: save the best model
+
     checkpoint_callback = ModelCheckpoint(
-        monitor='val_acc',                    # Metric to monitor
-        mode='max',                           # Save when metric is maximum
-        save_top_k=1,                         # Keep only the best model
+        monitor='val_acc',
+        mode='max',
+        save_top_k=1,
         filename='best-model-{epoch:02d}-{val_acc:.4f}',
         verbose=True
     )
-    
-    # Create PyTorch Lightning Trainer
+
     trainer = Trainer(
         max_epochs=config.MAX_EPOCHS,
         callbacks=[early_stopping, checkpoint_callback],
-        accelerator='cpu',              # Automatically use GPU if available
-        devices=1,                       # Use 1 device
-        log_every_n_steps=10,           # Log metrics every 10 steps
-        enable_progress_bar=True,       # Show progress bar
-        deterministic=False,             # For reproducibility
+        accelerator='auto',
+        devices=1,
+        log_every_n_steps=10,
+        enable_progress_bar=True,
+        deterministic=False
     )
-    
-    # Print model architecture
-    #model.print_model_info()
-    
-    # Start training
+
     print("Starting training...")
     start_time = time.time()
-    
+
     try:
         trainer.fit(model, train_loader, val_loader)
         training_time = time.time() - start_time
-        
+
         print("\n" + "=" * 60)
         print("TRAINING COMPLETED")
         print("=" * 60)
@@ -85,126 +67,108 @@ def train_model(model, train_loader, val_loader, config):
         print(f"Best model saved at: {checkpoint_callback.best_model_path}")
         print(f"Best validation accuracy: {checkpoint_callback.best_model_score:.4f}")
         print("=" * 60 + "\n")
-        
+
     except KeyboardInterrupt:
         print("\n\nTraining interrupted by user!")
         training_time = time.time() - start_time
         print(f"Training time before interruption: {training_time:.2f} seconds")
-    
+
     return model, trainer, training_time
 
 
 def test_model(model, trainer, test_loader, class_names):
     """
-    Test the trained model on the test set.
-    
-    Args:
-        model: Trained HybridQuantumClassifier
-        trainer: PyTorch Lightning Trainer instance
-        test_loader: DataLoader for test data
-        class_names: List of class names
-        
-    Returns:
-        dict: Test results including accuracy and predictions
+    Test the trained model on the test set using custom metrics.
     """
     print("\n" + "=" * 60)
     print("TESTING MODEL")
     print("=" * 60)
-    
+
     # Run testing
     test_results = trainer.test(model, test_loader)
-    
-    # Get predictions and targets (stored in model during test)
-    predictions = model.test_predictions
-    targets = model.test_targets
-    
-    # Calculate accuracy
-    test_acc = (predictions == targets).mean()
-    
+
+    # Collect predictions and targets
+    all_preds = []
+    all_targets = []
+    model.eval()
+    with torch.no_grad():
+        for x, y in test_loader:
+            x, y = x.to(model.device), y.to(model.device)
+            y_hat = model(x)
+            all_preds.append(y_hat)
+            all_targets.append(y)
+
+    preds_tensor = torch.cat(all_preds)
+    targets_tensor = torch.cat(all_targets)
+
+    # Métricas personalizadas
+    metrics = compute_metrics(preds_tensor, targets_tensor, model.num_classes)
+
+    # Accuracy y F1 con sklearn
+    preds_np = torch.argmax(preds_tensor, dim=1).cpu().numpy()
+    targets_np = targets_tensor.cpu().numpy()
+    test_acc = accuracy_score(targets_np, preds_np)
+    test_f1 = f1_score(targets_np, preds_np, average='weighted')
+
     print(f"\nTest Accuracy: {test_acc:.4f} ({test_acc*100:.2f}%)")
+    print(f"Test F1-score: {test_f1:.4f}")
+    print(f"Test IoU: {metrics['IoU']:.4f}")
     print("=" * 60 + "\n")
-    
+
     return {
         'test_results': test_results,
-        'predictions': predictions,
-        'targets': targets,
+        'predictions': preds_np,
+        'targets': targets_np,
         'accuracy': test_acc,
+        'f1_score': test_f1,
+        'iou': metrics['IoU'],
         'class_names': class_names
     }
 
 
-def save_model(model, config, class_names, test_accuracy, training_time, filename=None):
+def save_model(model, config, class_names, test_accuracy, test_f1, test_iou, training_time, filename=None):
     """
     Save the trained model and metadata.
-    
-    Args:
-        model: Trained model
-        config: Configuration object
-        class_names: List of class names
-        test_accuracy: Test accuracy achieved
-        training_time: Time taken to train
-        filename: Optional custom filename
-        
-    Returns:
-        str: Path to saved model
     """
     if filename is None:
         filename = f"hybrid_quantum_{config.ENCODING}_{config.CIRCUIT_TYPE}.pth"
-    
-    # Create save dictionary
+
     save_dict = {
         'model_state_dict': model.state_dict(),
         'config': config.get_config_dict(),
         'class_names': class_names,
         'test_accuracy': test_accuracy,
-        'training_time': training_time,
+        'test_f1': test_f1,
+        'test_iou': test_iou,
+        'training_time': training_time
     }
-    
-    # Save
+
     torch.save(save_dict, filename)
     print(f"\nModel saved as: {filename}")
-    
     return filename
 
 
 def load_model(filename, model_class, quantum_device):
     """
     Load a saved model.
-    
-    Args:
-        filename: Path to saved model file
-        model_class: HybridQuantumClassifier class
-        quantum_device: PennyLane quantum device
-        
-    Returns:
-        tuple: (model, metadata)
     """
-    # Load checkpoint
     checkpoint = torch.load(filename)
-    
-    # Recreate config (you'd need to create a Config object from the dict)
-    # For simplicity, we'll just return the checkpoint
     print(f"Model loaded from: {filename}")
     print(f"Test accuracy: {checkpoint['test_accuracy']:.4f}")
+    print(f"Test F1-score: {checkpoint['test_f1']:.4f}")
+    print(f"Test IoU: {checkpoint.get('test_iou', 0):.4f}")
     print(f"Training time: {checkpoint['training_time']:.2f} seconds")
-    
     return checkpoint
 
 
 def print_training_summary(model, test_results, training_time, config):
     """
     Print a comprehensive summary of training results.
-    
-    Args:
-        model: Trained model
-        test_results: Results from testing
-        training_time: Time taken to train
-        config: Configuration object
     """
     print("\n" + "=" * 60)
     print("TRAINING SUMMARY")
     print("=" * 60)
-    
+
     print("\nConfiguration:")
     print(f"  Encoding: {config.ENCODING}")
     print(f"  Circuit: {config.CIRCUIT_TYPE}")
@@ -212,14 +176,10 @@ def print_training_summary(model, test_results, training_time, config):
     print(f"  Layers: {config.N_LAYERS}")
     print(f"  Batch Size: {config.BATCH_SIZE}")
     print(f"  Learning Rate: {config.LEARNING_RATE}")
-    
-    print("\nModel Parameters:")
-    params = model.get_num_parameters()
-    for component, count in params.items():
-        print(f"  {component.capitalize():15s}: {count:,}")
-    
+
     print("\nPerformance:")
     print(f"  Test Accuracy: {test_results['accuracy']:.4f} ({test_results['accuracy']*100:.2f}%)")
+    print(f"  Test F1-score: {test_results['f1_score']:.4f}")
+    print(f"  Test IoU: {test_results['iou']:.4f}")
     print(f"  Training Time: {training_time:.2f} seconds ({training_time/60:.2f} minutes)")
-    
     print("=" * 60 + "\n")
