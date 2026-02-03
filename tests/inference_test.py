@@ -13,7 +13,7 @@ config = Config()
 
 #model = HybridUNet(config, 3, 10)
 
-model_checkpoint = 'lightning_logs/version_11/checkpoints/best-model-epoch=41-val_acc=0.7087.ckpt'
+model_checkpoint = 'trained_models/best-model-epoch=41-val_acc=0.7087.ckpt'
 image_path = 'FloodNet/FloodNet-Supervised_v1.0/val/val-org-img/6345.jpg'
 
 model = HybridUNet.load_from_checkpoint(model_checkpoint, device=device)
