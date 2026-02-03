@@ -82,8 +82,9 @@ class FloodNetDataset(Dataset):
     def get_label_transform(image_size=(64, 64)):
         return transforms.Compose(
             [
-                transforms.Resize(image_size),
-                transforms.ToTensor(),
+                transforms.Resize(image_size, interpolation=transforms.InterpolationMode.NEAREST), # 
+                transforms.PILToTensor(), # Keep label as integer tensor
+                MaskToLong(),  # Remove channel dim and convert to long
             ]
         )
 
@@ -97,6 +98,8 @@ class FloodNetDataset(Dataset):
                 transforms.Normalize(mean=settings.MEAN, std=settings.STD),
             ]
         )
+    
+    
 
     def get_class_distribution(self):
         """
@@ -115,3 +118,8 @@ class FloodNetDataset(Dataset):
             f"image_shape={self.images_paths[0].shape}, "
             f"num_classes={len(set(self.labels_paths))})"
         )
+
+class MaskToLong:
+    """Custom transform to convert mask tensor to long and remove channel dimension."""
+    def __call__(self, mask):
+        return mask.squeeze(0).long()

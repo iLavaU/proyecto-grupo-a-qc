@@ -105,6 +105,8 @@ def plot_sample_image_from_dataloader(dataloader, figsize=(15, 6), same_plot=Tru
         axes[0].axis("off")
 
         axes[1].imshow(mask, cmap="gray")
+        print(f"Unique mask values: {np.unique(mask)}")
+
         axes[1].set_title("Corresponding Mask", fontsize=12)
         axes[1].axis("off")
 
