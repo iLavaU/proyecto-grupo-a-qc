@@ -11,6 +11,7 @@ This script orchestrates the entire pipeline:
 """
 
 import torch
+#torch.use_deterministic_algorithms(False)
 import numpy as np
 import pytorch_lightning as pl
 
@@ -62,8 +63,8 @@ def main():
     config.print_config()
 
     # Set random seeds for reproducibility
-    set_random_seeds(42)
-    print("✓ Random seeds set for reproducibility\n")
+    #set_random_seeds(42)
+    #print("✓ Random seeds set for reproducibility\n")
 
     # Check for GPU
     if torch.cuda.is_available():
