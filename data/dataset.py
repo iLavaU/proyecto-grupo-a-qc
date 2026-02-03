@@ -4,6 +4,7 @@ FloodNet Dataset Module
 """
 
 from email.mime import image
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -61,10 +62,11 @@ class FloodNetDataset(Dataset):
         Returns:
             tuple: (image_tensor, label_tensor) where both are torch.Tensor
         """
-        # Load image and label
+        # Get image and label paths
         img_path = self.images_paths[idx]
         label_path = self.labels_paths[idx]
 
+        # Load image and label
         img = Image.open(img_path).convert("RGB")
         mask = Image.open(label_path).convert("L")  # Assuming label is a grayscale mask
 
@@ -92,7 +94,7 @@ class FloodNetDataset(Dataset):
                 transforms.Resize(image_size),
                 transforms.ToTensor(),
                 # ImageNet normalization (standard for pre-trained models)
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.Normalize(mean=settings.MEAN, std=settings.STD),
             ]
         )
 
@@ -109,7 +111,7 @@ class FloodNetDataset(Dataset):
     def __repr__(self):
         """String representation of the dataset"""
         return (
-            f"EuroSATDataset(samples={len(self)}, "
+            f"FloodNetDataset(samples={len(self)}, "
             f"image_shape={self.images_paths[0].shape}, "
             f"num_classes={len(set(self.labels_paths))})"
         )

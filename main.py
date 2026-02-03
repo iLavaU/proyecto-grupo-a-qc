@@ -16,7 +16,7 @@ import pytorch_lightning as pl
 
 import sys
 
-sys.path += ['.', '..']
+sys.path += [".", ".."]
 
 # Import project modules
 from config import Config
@@ -24,13 +24,13 @@ from data import download_dataset, load_images_path, create_dataloaders
 from quantum import create_quantum_device
 from models import HybridQuantumClassifier
 from training import train_model, test_model, save_model, print_training_summary
-from utils import plot_sample_images, visualize_results
+from utils import plot_sample_images, visualize_results, plot_sample_image_from_dataloader
 
 
 def set_random_seeds(seed=42):
     """
     Set random seeds for reproducibility.
-    
+
     Args:
         seed: Random seed value
     """
@@ -45,112 +45,109 @@ def set_random_seeds(seed=42):
 def main():
     """
     Main execution function.
-    
+
     This function runs the complete pipeline from data loading to evaluation.
     """
     print("\n" + "=" * 60)
     print("HYBRID QUANTUM CLASSIFIER FOR SATELLITE IMAGERY")
     print("EuroSAT Dataset - 10 Land Use Classes")
     print("=" * 60 + "\n")
-    
+
     # ==================== CONFIGURATION ====================
-    
+
     print("Step 1: Loading Configuration...")
     config = Config()
     config.print_config()
-    
+
     # Set random seeds for reproducibility
     set_random_seeds(42)
     print("✓ Random seeds set for reproducibility\n")
-    
+
     # Check for GPU
     if torch.cuda.is_available():
         print(f"✓ GPU available: {torch.cuda.get_device_name(0)}")
         print(f"  CUDA version: {torch.version.cuda}\n")
     else:
         print("⚠ No GPU available, using CPU\n")
-    
+
     # ==================== DATA LOADING ====================
-    
+
     print("\n" + "=" * 60)
     print("Step 2: Loading Data")
     print("=" * 60 + "\n")
-    
+
     # Download dataset if needed
     download_dataset()
-    
+
     # Load images
-    images_path, labels_path, class_names = load_images_path(
-        max_per_class=config.MAX_IMAGES_PER_CLASS
-    )
-    
-    # Update config with actual number of classes
-    config.N_CLASSES = len(class_names)
-    
+    images_path, labels_path = load_images_path(max_per_class=config.MAX_IMAGES_PER_CLASS)
+
     # Create data loaders
-    train_loader, val_loader, test_loader, label_to_idx = create_dataloaders(
-        images_path, labels_path, class_names, config
-    )
-    
+    train_loader, val_loader, test_loader, label_to_idx_map = create_dataloaders(images_path, labels_path, config)
+
     print(f"\n✓ Data loading complete!")
-    print(f"  Classes: {class_names}")
+    print(f"  Classes: {list(label_to_idx_map.keys())}")
     print(f"  Total samples: {len(images_path)}")
     print(f"  Train samples: {len(train_loader.dataset)}")
     print(f"  Validation samples: {len(val_loader.dataset)}")
     print(f"  Test samples: {len(test_loader.dataset)}\n")
-    
+
+    # Plot sample images
+    plot_sample_image_from_dataloader(test_loader, same_plot=True)
+
     # ==================== QUANTUM DEVICE ====================
-    
+
+
 #     print("\n" + "=" * 60)
 #     print("Step 3: Setting up Quantum Device")
 #     print("=" * 60)
-    
+
 #     quantum_device = create_quantum_device(
 #         n_qubits=config.N_QUBITS,
 #         device_name=config.DEVICE
 #     )
-    
+
 #     # ==================== MODEL CREATION ====================
-    
+
 #     print("\n" + "=" * 60)
 #     print("Step 4: Creating Hybrid Model")
 #     print("=" * 60 + "\n")
-    
+
 #     model = HybridQuantumClassifier(config, quantum_device)
 #     model.print_model_info()
-    
+
 #     # ==================== TRAINING ====================
-    
+
 #     print("\n" + "=" * 60)
 #     print("Step 5: Training")
 #     print("=" * 60)
-    
+
 #     model, trainer, training_time = train_model(
 #         model, train_loader, val_loader, config
 #     )
-    
+
 #     # ==================== TESTING ====================
-    
+
 #     print("\n" + "=" * 60)
 #     print("Step 6: Testing")
 #     print("=" * 60)
-    
+
 #     test_results = test_model(model, trainer, test_loader, class_names)
-    
+
 #     # ==================== VISUALIZATION ====================
-    
+
 #     print("\n" + "=" * 60)
 #     print("Step 7: Generating Visualizations")
 #     print("=" * 60)
-    
+
 #     visualize_results(test_results)
-    
+
 #     # ==================== SAVE MODEL ====================
-    
+
 #     print("\n" + "=" * 60)
 #     print("Step 8: Saving Model")
 #     print("=" * 60)
-    
+
 #     model_path = save_model(
 #         model=model,
 #         config=config,
@@ -158,11 +155,11 @@ def main():
 #         test_accuracy=test_results['accuracy'],
 #         training_time=training_time
 #     )
-    
+
 #     # ==================== FINAL SUMMARY ====================
-    
+
 #     print_training_summary(model, test_results, training_time, config)
-    
+
 #     print("\n" + "=" * 60)
 #     print("PIPELINE COMPLETED SUCCESSFULLY!")
 #     print("=" * 60)
@@ -181,27 +178,27 @@ def main():
 #     print("\n" + "=" * 60)
 #     print("QUICK TEST MODE")
 #     print("=" * 60 + "\n")
-    
+
 #     # Test imports
 #     print("Testing imports...")
 #     from config import Config
 #     from quantum import create_quantum_device, print_encoding_options, print_circuit_options
 #     print("✓ All imports successful\n")
-    
+
 #     # Test configuration
 #     print("Testing configuration...")
 #     config = Config()
 #     config.print_config()
-    
+
 #     # Test quantum device
 #     print("Testing quantum device...")
 #     device = create_quantum_device(4, 'default.qubit')
 #     print("✓ Quantum device created\n")
-    
+
 #     # Show available options
 #     print_encoding_options()
 #     print_circuit_options()
-    
+
 #     print("\n" + "=" * 60)
 #     print("QUICK TEST COMPLETED SUCCESSFULLY!")
 #     print("=" * 60 + "\n")
@@ -210,7 +207,7 @@ def main():
 
 if __name__ == "__main__":
     # You can uncomment the line below to run a quick test first
-    #quick_test()
-    
+    # quick_test()
+
     # Run the full pipeline
     main()

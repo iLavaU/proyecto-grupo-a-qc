@@ -55,7 +55,9 @@ class Config:
     MAX_IMAGES_PER_CLASS = 300
     
     # Image size after resizing
-    IMAGE_SIZE = (64, 64)
+    IMAGE_SIZE = (640, 640)
+    MEAN = [0.485, 0.456, 0.406]
+    STD = [0.229, 0.224, 0.225]
     
     # Data split ratios
     TRAIN_RATIO = 0.7
@@ -64,6 +66,19 @@ class Config:
     
     # Number of worker processes for data loading
     NUM_WORKERS = 2
+
+    CLASS_MAPPING = {
+        0: 'Background',
+        1: 'Building-Flooded',
+        2: 'Building-Non-Flooded',
+        3: 'Road-Flooded',
+        4: 'Road-Non-Flooded',
+        5: 'Water',
+        6: 'Tree',
+        7: 'Vehicle',
+        8: 'Pool',
+        9: 'Grass',
+    }
     
     # ==================== MODEL CONFIGURATION ====================
     
@@ -74,7 +89,9 @@ class Config:
     DROPOUT_RATE = 0.3
     
     # Number of classes (will be set automatically from dataset)
-    N_CLASSES = 10
+    @property
+    def N_CLASSES(self):
+        return len(self.CLASS_MAPPING)
     
     # ==================== COMPUTED PROPERTIES ====================
     
@@ -104,7 +121,7 @@ class Config:
             'max_epochs': cls.MAX_EPOCHS,
             'patience': cls.PATIENCE,
             'quantum_input_dim': config.quantum_input_dim,
-            'n_classes': cls.N_CLASSES,
+            'n_classes': config.N_CLASSES,
         }
     
     @classmethod

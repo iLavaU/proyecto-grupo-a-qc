@@ -12,9 +12,10 @@ import torch
 from torch.utils.data import DataLoader, random_split
 
 from .dataset import FloodNetDataset
+from config import settings
 
 
-def download_dataset(data_dir="FloodNet"):
+def download_dataset(data_dir: str = "FloodNet") -> None:
     """
     Download the FloodNet dataset if not already present.
 
@@ -58,22 +59,10 @@ def download_dataset(data_dir="FloodNet"):
     print("Dataset downloaded and extracted successfully!")
 
 
-def load_images_path(data_dir: str = "FloodNet", max_per_class: int = 300) -> tuple[list[Path], list[Path], list[str]]:
-    class_names = [
-        "background",
-        "building-flooded",
-        "building-non-flooded",
-        "road-flooded",
-        "road-non-flooded",
-        "water",
-        "tree",
-        "vehicle",
-        "pool",
-        "grass",
-    ]
-
-    data_path = Path(data_dir)
-    data_path = data_path / "FloodNet-Supervised_v1.0"
+def load_images_path(
+    data_dir: Path = Path("FloodNet"), max_per_class: int = 300
+) -> tuple[list[Path], list[Path], list[str]]:
+    data_path = data_dir / "FloodNet-Supervised_v1.0"
 
     if not data_path.exists():
         raise FileNotFoundError(f"Dataset directory not found: {data_dir}\n" f"Please run download_dataset() first.")
@@ -84,47 +73,54 @@ def load_images_path(data_dir: str = "FloodNet", max_per_class: int = 300) -> tu
         org_images_path = Path(data_path / category / f"{category}-org-img")
         label_images_path = Path(data_path / category / f"{category}-label-img")
 
-        assert org_images_path.exists(), f"Image path not found: {org_images_path}"
-        assert label_images_path.exists(), f"Label path not found: {label_images_path}"
+        if not org_images_path.exists() or not label_images_path.exists():
+            print(f"Warning: Skipping missing category '{category}', folder not found.")
+            continue
 
         image_files_list = sorted(org_images_path.rglob("*.jpg"))
         label_files_list = sorted(label_images_path.rglob("*.png"))
 
-        image_files += image_files_list  # Equivalente a extend()
+        if len(image_files_list) != len(label_files_list):
+            raise ValueError(
+                f"Number of images and labels do not match in category '{category}': "
+                f"{len(image_files_list)} images vs {len(label_files_list)} labels."
+            )
+        if len(image_files_list) == 0:
+            print(f"Warning: No images found in category '{category}'.")
+            continue
+
+        # Limitar a max_per_class imágenes por clase
+        if max_per_class > 0:
+            image_files_list = image_files_list[:max_per_class]
+            label_files_list = label_files_list[:max_per_class]
+
+        image_files += image_files_list
         label_files += label_files_list
 
-    return image_files, label_files, class_names
+    return image_files, label_files
 
-
-def create_label_mapping(class_names):
+def label_to_idx() -> dict[str, int]:
     """
-    Create a mapping from class names to numeric indices.
-
-    Args:
-        class_names: List of class names
-
+    Create a mapping from class names to indices using settings.CLASS_MAPPING.
+    
     Returns:
-        dict: Mapping from class name to index
+        dict: Dictionary mapping class names to their corresponding indices
+              Example: {'Background': 0, 'Building-Flooded': 1, ...}
     """
-    label_to_idx = {cls: idx for idx, cls in enumerate(class_names)}
-    return label_to_idx
+    return {name: idx for idx, name in settings.CLASS_MAPPING.items()}
 
 
-def labels_to_numeric(labels, label_to_idx):
+def idx_to_label() -> dict[int, str]:
     """
-    Convert string labels to numeric indices.
-
-    Args:
-        labels: Array of string labels
-        label_to_idx: Dictionary mapping labels to indices
-
+    Create a mapping from indices to class names using settings.CLASS_MAPPING.
+    
     Returns:
-        numpy.ndarray: Array of numeric labels
+        dict: Dictionary mapping indices to their corresponding class names
+              Example: {0: 'Background', 1: 'Building-Flooded', ...}
     """
-    return np.array([label_to_idx[label] for label in labels])
+    return settings.CLASS_MAPPING.copy()
 
-
-def create_dataloaders(images_path, labels_path, class_names, config):
+def create_dataloaders(images_path: list[Path], labels_path: list[Path], config) -> tuple[DataLoader, DataLoader, DataLoader, dict[str, int]]:
     """
     Create PyTorch DataLoaders for training, validation, and testing.
 
@@ -137,15 +133,14 @@ def create_dataloaders(images_path, labels_path, class_names, config):
     Args:
         images_path: List of image file paths
         labels_path: List of label file paths
-        class_names: List of class names
         config: Configuration object with batch_size, train_ratio, etc.
 
     Returns:
         tuple: (train_loader, val_loader, test_loader, label_to_idx)
     """
     # Create label mapping
-    label_to_idx = create_label_mapping(class_names)
-    print(f"\nLabel mapping: {label_to_idx}")
+    label_to_idx_map = label_to_idx()
+    print(f"\nLabel mapping: {label_to_idx_map}")
 
     # Create dataset
     images_transform = FloodNetDataset.get_image_transform(image_size=config.IMAGE_SIZE)
@@ -197,4 +192,4 @@ def create_dataloaders(images_path, labels_path, class_names, config):
 
     print("DataLoaders created successfully!")
 
-    return train_loader, val_loader, test_loader, label_to_idx
+    return train_loader, val_loader, test_loader, label_to_idx_map
