@@ -69,6 +69,9 @@ def main():
     if torch.cuda.is_available():
         print(f"✓ GPU available: {torch.cuda.get_device_name(0)}")
         print(f"  CUDA version: {torch.version.cuda}\n")
+    elif torch.backends.mps.is_available():
+        torch.device("mps")
+        print("Using MPS\n")
     else:
         print("⚠ No GPU available, using CPU\n")
 
@@ -141,38 +144,38 @@ def main():
 
 #     # ==================== VISUALIZATION ====================
 
-#     print("\n" + "=" * 60)
-#     print("Step 7: Generating Visualizations")
-#     print("=" * 60)
+    print("\n" + "=" * 60)
+    print("Step 7: Generating Visualizations")
+    print("=" * 60)
 
-#     visualize_results(test_results)
+    visualize_results(test_results)
 
 #     # ==================== SAVE MODEL ====================
 
-#     print("\n" + "=" * 60)
-#     print("Step 8: Saving Model")
-#     print("=" * 60)
+    print("\n" + "=" * 60)
+    print("Step 8: Saving Model")
+    print("=" * 60)
 
-#     model_path = save_model(
-#         model=model,
-#         config=config,
-#         class_names=class_names,
-#         test_accuracy=test_results['accuracy'],
-#         training_time=training_time
-#     )
+    model_path = save_model(
+        model=model,
+        config=config,
+        class_names=class_names,
+        test_accuracy=test_results['accuracy'],
+        training_time=training_time
+    )
 
 #     # ==================== FINAL SUMMARY ====================
 
-#     print_training_summary(model, test_results, training_time, config)
+    print_training_summary(model, test_results, training_time, config)
 
-#     print("\n" + "=" * 60)
-#     print("PIPELINE COMPLETED SUCCESSFULLY!")
-#     print("=" * 60)
-#     print(f"\n✓ Model saved: {model_path}")
-#     print(f"✓ Test Accuracy: {test_results['accuracy']:.4f} ({test_results['accuracy']*100:.2f}%)")
-#     print(f"✓ Training Time: {training_time:.2f} seconds ({training_time/60:.2f} minutes)")
-#     print("\nThank you for using the Hybrid Quantum Classifier!")
-#     print("=" * 60 + "\n")
+    print("\n" + "=" * 60)
+    print("PIPELINE COMPLETED SUCCESSFULLY!")
+    print("=" * 60)
+    print(f"\n✓ Model saved: {model_path}")
+    print(f"✓ Test Accuracy: {test_results['accuracy']:.4f} ({test_results['accuracy']*100:.2f}%)")
+    print(f"✓ Training Time: {training_time:.2f} seconds ({training_time/60:.2f} minutes)")
+    print("\nThank you for using the Hybrid Quantum Classifier!")
+    print("=" * 60 + "\n")
 
 
 # def quick_test():

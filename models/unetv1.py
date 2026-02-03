@@ -47,6 +47,10 @@ class HybridUNet(LightningModule):
 
         self.config=config
 
+        # Storage for validation and test outputs
+        self.validation_step_outputs = []
+        self.test_step_outputs = []
+
         self.enc1 = ConvBlock(in_ch, 8)
         self.enc2 = ConvBlock(8, 16)
         self.enc3 = ConvBlock(16, 32)

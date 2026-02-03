@@ -68,7 +68,7 @@ def train_model(model, train_loader, val_loader, config):
     )
     
     # Print model architecture
-    model.print_model_info()
+    #model.print_model_info()
     
     # Start training
     print("Starting training...")
