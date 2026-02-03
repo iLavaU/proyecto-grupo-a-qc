@@ -4,8 +4,9 @@ import torch.nn.functional as F
 from torchmetrics.classification import MulticlassF1Score, MulticlassAccuracy
 import pennylane as qml
 from pytorch_lightning import LightningModule
-from utils.metrics import compute_metrics
+from config import Config
 
+from utils.metrics import compute_metrics
 
 n_qubits = 4
 n_layers = 1
@@ -51,7 +52,7 @@ class ConvBlock(nn.Module):
         return self.conv(x)
 
 class HybridUNet(LightningModule):
-    def __init__(self, config, in_ch=3, out_ch=3):
+    def __init__(self, config=Config(), in_ch=3, out_ch=10):
         super().__init__()
         self.config = config
         self.num_classes = out_ch

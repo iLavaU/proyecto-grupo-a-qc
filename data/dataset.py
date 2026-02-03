@@ -3,8 +3,6 @@ FloodNet Dataset Module
 =======================
 """
 
-from email.mime import image
-import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -21,9 +19,10 @@ class FloodNetDataset(Dataset):
     allowing the CNN to extract features from the raw images.
 
     Args:
-        images (numpy.ndarray): Array of images with shape (N, H, W, C)
-        labels (numpy.ndarray): Array of numeric labels with shape (N,)
-        transform (callable, optional): Transform to apply to images
+        images_paths (list[Path]): List of images paths
+        labels_paths (list[Path]): List of labels paths
+        image_transforms (callable, optional): Transform to apply to images
+        label_transforms (callable, optional): Transform to apply to labels
     """
 
     def __init__(self, images_paths, labels_paths, image_transforms=None, label_transforms=None):
