@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pennylane as qml
+from pytorch_lightning import LightningModule
 
 n_qubits = 4
 n_layers = 1
@@ -40,9 +41,12 @@ class ConvBlock(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
-class HybridUNet(nn.Module):
-    def __init__(self, in_ch=3, out_ch=3):
+class HybridUNet(LightningModule):
+    def __init__(self, config, in_ch=3, out_ch=3):
         super().__init__()
+
+        self.config=config
+
         self.enc1 = ConvBlock(in_ch, 8)
         self.enc2 = ConvBlock(8, 16)
         self.enc3 = ConvBlock(16, 32)
@@ -54,6 +58,7 @@ class HybridUNet(nn.Module):
         self.dec3 = ConvBlock(32+32, 16)
         self.dec2 = ConvBlock(16+16, 8)
         self.dec1 = nn.Conv2d(8, out_ch, 1)
+        self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, x):
         x1 = self.enc1(x)
@@ -79,3 +84,131 @@ class HybridUNet(nn.Module):
         out = self.dec1(x_up)
 
         return out
+
+    def training_step(self, batch, batch_idx):
+        """
+        Training step (called by PyTorch Lightning).
+
+        Args:
+            batch: Tuple of (images, labels)
+            batch_idx: Index of the current batch
+
+        Returns:
+            Loss value for this batch
+        """
+        x, y = batch
+
+        # Forward pass
+        y_hat = self(x)
+
+        # Compute loss
+        loss = self.criterion(y_hat, y)
+
+        # Compute accuracy
+        preds = torch.argmax(y_hat, dim=1)
+        acc = (preds == y).float().mean()
+
+        # Log metrics (visible in progress bar and logger)
+        self.log('train_loss', loss, prog_bar=True)
+        self.log('train_acc', acc, prog_bar=True)
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        """
+        Validation step (called by PyTorch Lightning).
+
+        Args:
+            batch: Tuple of (images, labels)
+            batch_idx: Index of the current batch
+
+        Returns:
+            Loss value for this batch
+        """
+        x, y = batch
+
+        # Forward pass
+        y_hat = self(x)
+
+        # Compute loss
+        loss = self.criterion(y_hat, y)
+
+        # Compute accuracy
+        preds = torch.argmax(y_hat, dim=1)
+        acc = (preds == y).float().mean()
+
+        # Log metrics
+        self.log('val_loss', loss, prog_bar=True)
+        self.log('val_acc', acc, prog_bar=True)
+
+        # Store predictions for later analysis
+        self.validation_step_outputs.append({
+            'preds': preds,
+            'targets': y
+        })
+
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        """
+        Test step (called by PyTorch Lightning).
+
+        Args:
+            batch: Tuple of (images, labels)
+            batch_idx: Index of the current batch
+
+        Returns:
+            Loss value for this batch
+        """
+        x, y = batch
+
+        # Forward pass
+        y_hat = self(x)
+
+        # Compute loss
+        loss = self.criterion(y_hat, y)
+
+        # Compute accuracy
+        preds = torch.argmax(y_hat, dim=1)
+        acc = (preds == y).float().mean()
+
+        # Log metrics
+        self.log('test_loss', loss)
+        self.log('test_acc', acc)
+
+        # Store predictions for confusion matrix and report
+        self.test_step_outputs.append({
+            'preds': preds,
+            'targets': y
+        })
+
+        return loss
+
+    def configure_optimizers(self):
+        """
+        Configure optimizer and learning rate scheduler.
+
+        Returns:
+            dict: Optimizer and scheduler configuration
+        """
+        # Adam optimizer (works well for both classical and quantum parameters)
+        optimizer = torch.optim.Adam(
+            self.parameters(),
+            lr=self.config.LEARNING_RATE
+        )
+
+        # Learning rate scheduler: reduce LR when validation loss plateaus
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            factor=0.5,  # Reduce LR by half
+            patience=5  # Wait 5 epochs before reducing
+        )
+
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'monitor': 'val_loss'  # Monitor validation loss
+            }
+        }

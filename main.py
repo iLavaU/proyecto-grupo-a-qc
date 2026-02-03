@@ -16,6 +16,8 @@ import pytorch_lightning as pl
 
 import sys
 
+from models.unetv1 import HybridUNet
+
 sys.path += [".", ".."]
 
 # Import project modules
@@ -98,41 +100,44 @@ def main():
     # ==================== QUANTUM DEVICE ====================
 
 
-#     print("\n" + "=" * 60)
-#     print("Step 3: Setting up Quantum Device")
-#     print("=" * 60)
+    print("\n" + "=" * 60)
+    print("Step 3: Setting up Quantum Device")
+    print("=" * 60)
 
-#     quantum_device = create_quantum_device(
-#         n_qubits=config.N_QUBITS,
-#         device_name=config.DEVICE
-#     )
+    quantum_device = create_quantum_device(
+        n_qubits=config.N_QUBITS,
+        device_name=config.DEVICE
+    )
 
 #     # ==================== MODEL CREATION ====================
 
-#     print("\n" + "=" * 60)
-#     print("Step 4: Creating Hybrid Model")
-#     print("=" * 60 + "\n")
+    print("\n" + "=" * 60)
+    print("Step 4: Creating Hybrid Model")
+    print("=" * 60 + "\n")
 
-#     model = HybridQuantumClassifier(config, quantum_device)
-#     model.print_model_info()
+    model = HybridUNet(config, in_ch=3, out_ch=10)
+    # model = HybridQuantumClassifier(config, quantum_device)
+    # model.print_model_info()
 
 #     # ==================== TRAINING ====================
 
-#     print("\n" + "=" * 60)
-#     print("Step 5: Training")
-#     print("=" * 60)
+    print("\n" + "=" * 60)
+    print("Step 5: Training")
+    print("=" * 60)
 
-#     model, trainer, training_time = train_model(
-#         model, train_loader, val_loader, config
-#     )
+    model, trainer, training_time = train_model(
+        model, train_loader, val_loader, config
+    )
 
 #     # ==================== TESTING ====================
 
-#     print("\n" + "=" * 60)
-#     print("Step 6: Testing")
-#     print("=" * 60)
+    print("\n" + "=" * 60)
+    print("Step 6: Testing")
+    print("=" * 60)
 
-#     test_results = test_model(model, trainer, test_loader, class_names)
+    class_names = list(label_to_idx_map.items())
+
+    test_results = test_model(model, trainer, test_loader, class_names)
 
 #     # ==================== VISUALIZATION ====================
 
