@@ -1,3 +1,5 @@
+import numpy as np
+
 """
 Configuration file for Hybrid Quantum Classifier
 Contains all hyperparameters and settings for the project
@@ -79,6 +81,19 @@ class Config:
         8: 'Pool',
         9: 'Grass',
     }
+
+    COLOR_MAP = np.array([
+        (0, 0, 0),  # 0
+        (255, 0, 0),  # 1
+        (180, 120, 120),  # 2
+        (160, 150, 20),  # 3
+        (140, 140, 140),  # 4
+        (61, 230, 250),  # 5
+        (0, 82, 255),  # 6
+        (255, 0, 245),  # 7
+        (255, 235, 0),  # 8
+        (4, 250, 7)  # 9
+    ], dtype=np.uint8)
     
     # ==================== MODEL CONFIGURATION ====================
     

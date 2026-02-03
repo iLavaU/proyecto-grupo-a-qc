@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pennylane as qml
 from pytorch_lightning import LightningModule
+from config import Config
 
 
 n_qubits = 4
@@ -49,7 +50,7 @@ class ConvBlock(nn.Module):
         return self.conv(x)
 
 class HybridUNet(LightningModule):
-    def __init__(self, config, in_ch=3, out_ch=3):
+    def __init__(self, config=Config(), in_ch=3, out_ch=10):
         super().__init__()
 
         self.config=config
