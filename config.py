@@ -94,6 +94,8 @@ class Config:
         (255, 235, 0),  # 8
         (4, 250, 7)  # 9
     ], dtype=np.uint8)
+
+    NUM_CLASSES = len(CLASS_MAPPING)
     
     # ==================== MODEL CONFIGURATION ====================
     

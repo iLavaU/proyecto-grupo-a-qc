@@ -11,24 +11,24 @@ This script orchestrates the entire pipeline:
 """
 
 import torch
-#torch.use_deterministic_algorithms(False)
+
+# torch.use_deterministic_algorithms(False)
 import numpy as np
 import pytorch_lightning as pl
 
 import sys
 
-#from models.unetv1 import HybridQuantum
+# from models.unetv1 import HybridQuantum
 from models.modelv2 import HybridQuantum
 
 sys.path += [".", ".."]
 
 # Import project modules
-from config import Config
+from config import settings
 from data import download_dataset, load_images_path, create_dataloaders
 from quantum import create_quantum_device
-from models import HybridQuantumClassifier
 from training import train_model, test_model, save_model, print_training_summary
-from utils import plot_sample_images, visualize_results, plot_sample_image_from_dataloader
+from utils import visualize_results
 
 
 def set_random_seeds(seed=42):
@@ -60,12 +60,11 @@ def main():
     # ==================== CONFIGURATION ====================
 
     print("Step 1: Loading Configuration...")
-    config = Config()
-    config.print_config()
+    settings.print_config()
 
     # Set random seeds for reproducibility
     set_random_seeds(42)
-    #print("✓ Random seeds set for reproducibility\n")
+    # print("✓ Random seeds set for reproducibility\n")
 
     # Check for GPU
     if torch.cuda.is_available():
@@ -87,10 +86,10 @@ def main():
     download_dataset()
 
     # Load images
-    images_path, labels_path = load_images_path(max_per_class=config.MAX_IMAGES_PER_CLASS)
+    images_path, labels_path = load_images_path(max_per_class=settings.MAX_IMAGES_PER_CLASS)
 
     # Create data loaders
-    train_loader, val_loader, test_loader, label_to_idx_map = create_dataloaders(images_path, labels_path, config)
+    train_loader, val_loader, test_loader, label_to_idx_map = create_dataloaders(images_path, labels_path, settings)
 
     print(f"\n✓ Data loading complete!")
     print(f"  Classes: {list(label_to_idx_map.keys())}")
@@ -100,43 +99,49 @@ def main():
     print(f"  Test samples: {len(test_loader.dataset)}\n")
 
     # Plot sample images
-    plot_sample_image_from_dataloader(test_loader, same_plot=True)
+    # plot_sample_image_from_dataloader(test_loader, same_plot=True)
 
     # ==================== QUANTUM DEVICE ====================
-
 
     print("\n" + "=" * 60)
     print("Step 3: Setting up Quantum Device")
     print("=" * 60)
 
-    quantum_device = create_quantum_device(
-        n_qubits=config.N_QUBITS,
-        device_name=config.DEVICE
-    )
+    quantum_device = create_quantum_device(n_qubits=settings.N_QUBITS, device_name=settings.DEVICE)
 
-#     # ==================== MODEL CREATION ====================
+    # ==================== MODEL CREATION ====================
 
     print("\n" + "=" * 60)
     print("Step 4: Creating Hybrid Model")
     print("=" * 60 + "\n")
 
-    #model = HybridQuantum(config, in_ch=3, out_ch=10) #unet
-    model = HybridQuantum(config, out_ch=10)
+    # model = HybridQuantum(settings, in_ch=3, out_ch=10) #unet
+    model = HybridQuantum(settings, out_ch=10)
 
-    # model = HybridQuantumClassifier(config, quantum_device)
+    # model = HybridQuantumClassifier(settings, quantum_device)
     # model.print_model_info()
 
-#     # ==================== TRAINING ====================
+    # ======================= TEST FORWARD PASS ================
+
+    print("\n" + "=" * 60)
+    print("Step 4.5: Testing Model Forward Pass")
+    print("=" * 60 + "\n")
+
+    sample_batch = next(iter(train_loader))
+    sample_inputs, sample_labels = sample_batch
+    with torch.no_grad():
+        sample_outputs = model(sample_inputs)
+        print(f"✓ Forward pass successful! Output shape: {sample_outputs.shape}\n")
+
+    # ==================== TRAINING ============================
 
     print("\n" + "=" * 60)
     print("Step 5: Training")
     print("=" * 60)
 
-    model, trainer, training_time = train_model(
-        model, train_loader, val_loader, config
-    )
+    model, trainer, training_time = train_model(model, train_loader, val_loader, settings)
 
-#     # ==================== TESTING ====================
+    # ==================== TESTING ====================
 
     print("\n" + "=" * 60)
     print("Step 6: Testing")
@@ -144,14 +149,14 @@ def main():
 
     class_names = list(label_to_idx_map.keys())
 
-    test_results  = test_model(model, trainer, test_loader, class_names)
-    
+    test_results = test_model(model, trainer, test_loader, class_names)
+
     test_metrics = {
-        'accuracy': test_results[0]['test_acc'],
-        'f1_score': test_results[0]['test_f1'],
-        'iou': test_results[0].get('test_iou', 0)
+        "accuracy": test_results[0]["test_acc"],
+        "f1_score": test_results[0]["test_f1"],
+        "iou": test_results[0].get("test_iou", 0),
     }
-#     # ==================== VISUALIZATION ====================
+    #     # ==================== VISUALIZATION ====================
 
     print("\n" + "=" * 60)
     print("Step 7: Generating Visualizations")
@@ -159,7 +164,7 @@ def main():
 
     visualize_results(test_results)
 
-#     # ==================== SAVE MODEL ====================
+    #     # ==================== SAVE MODEL ====================
 
     print("\n" + "=" * 60)
     print("Step 8: Saving Model")
@@ -167,18 +172,17 @@ def main():
 
     model_path = save_model(
         model=model,
-        config=config,
+        settings=settings,
         class_names=class_names,
-        test_accuracy=test_metrics['accuracy'],
-        test_f1=test_metrics['f1_score'],
-        test_iou=test_metrics['iou'],
-        training_time=training_time
+        test_accuracy=test_metrics["accuracy"],
+        test_f1=test_metrics["f1_score"],
+        test_iou=test_metrics["iou"],
+        training_time=training_time,
     )
 
+    #     # ==================== FINAL SUMMARY ====================
 
-#     # ==================== FINAL SUMMARY ====================
-
-    print_training_summary(model, test_results, training_time, config)
+    print_training_summary(model, test_results, training_time, settings)
 
     print("\n" + "=" * 60)
     print("PIPELINE COMPLETED SUCCESSFULLY!")
@@ -190,39 +194,38 @@ def main():
     print("=" * 60 + "\n")
 
 
-# def quick_test():
-#     """
-#     Quick test function to verify all components work.
-#     Run this to test the installation without full training.
-#     """
-#     print("\n" + "=" * 60)
-#     print("QUICK TEST MODE")
-#     print("=" * 60 + "\n")
+def quick_test():
+    """
+    Quick test function to verify all components work.
+    Run this to test the installation without full training.
+    """
+    print("\n" + "=" * 60)
+    print("QUICK TEST MODE")
+    print("=" * 60 + "\n")
 
-#     # Test imports
-#     print("Testing imports...")
-#     from config import Config
-#     from quantum import create_quantum_device, print_encoding_options, print_circuit_options
-#     print("✓ All imports successful\n")
+    # Test imports
+    print("Testing imports...")
+    from quantum import create_quantum_device, print_encoding_options, print_circuit_options
 
-#     # Test configuration
-#     print("Testing configuration...")
-#     config = Config()
-#     config.print_config()
+    print("✓ All imports successful\n")
 
-#     # Test quantum device
-#     print("Testing quantum device...")
-#     device = create_quantum_device(4, 'default.qubit')
-#     print("✓ Quantum device created\n")
+    # Test configuration
+    print("Testing configuration...")
+    settings.print_config()
 
-#     # Show available options
-#     print_encoding_options()
-#     print_circuit_options()
+    # Test quantum device
+    print("Testing quantum device...")
+    device = create_quantum_device(4, "default.qubit")
+    print("✓ Quantum device created\n")
 
-#     print("\n" + "=" * 60)
-#     print("QUICK TEST COMPLETED SUCCESSFULLY!")
-#     print("=" * 60 + "\n")
-#     print("You can now run the full training with: python main.py")
+    # Show available options
+    print_encoding_options()
+    print_circuit_options()
+
+    print("\n" + "=" * 60)
+    print("QUICK TEST COMPLETED SUCCESSFULLY!")
+    print("=" * 60 + "\n")
+    print("You can now run the full training with: python main.py")
 
 
 if __name__ == "__main__":
