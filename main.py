@@ -18,7 +18,7 @@ import pytorch_lightning as pl
 import sys
 
 #from models.unetv1 import HybridQuantum
-from models.modelv1 import HybridQuantum
+from models.modelv2 import HybridQuantum
 
 sys.path += [".", ".."]
 
