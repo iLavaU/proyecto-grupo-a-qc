@@ -23,7 +23,7 @@ def quantum_circuit(inputs, weights):
     return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
 
 class QuantumLayer(nn.Module):
-    def __init__(self):
+    def __init__(self, n_qubits=8):
         super().__init__()
         self.weights = nn.Parameter(0.01 * torch.randn(n_layers, n_qubits))
 
@@ -103,6 +103,9 @@ class HybridQuantum(LightningModule):
         self.test_acc = MulticlassAccuracy(num_classes=out_ch)
         self.test_preds = []
         self.test_targets = []
+
+        self.qc = QuantumLayer(n_qubits=n_qubits)
+
         self.enc1 = ConvResBlock(in_ch, 8)
         self.enc2 = ConvResBlock(8, 16)
         self.enc3 = ConvResBlock(16, 32)
@@ -110,6 +113,11 @@ class HybridQuantum(LightningModule):
         self.adaptive_pool = nn.AdaptiveAvgPool2d((4,4))
         self.mlp1 = nn.Sequential(
             nn.Linear(32*4*4, 128),
+            nn.LayerNorm(128),
+            nn.ReLU()
+        )
+        self.mlp2 = nn.Sequential(
+            nn.Linear(128, 128),
             nn.LayerNorm(128),
             nn.ReLU()
         )
@@ -121,6 +129,12 @@ class HybridQuantum(LightningModule):
 
         self.mlp4 = nn.Sequential(
             nn.Linear(n_qubits, 128),
+            nn.LayerNorm(128),
+            nn.ReLU()
+        )
+
+        self.mlp5 = nn.Sequential(
+            nn.Linear(128, 128),
             nn.LayerNorm(128),
             nn.ReLU()
         )
