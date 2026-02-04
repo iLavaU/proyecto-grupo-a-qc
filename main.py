@@ -17,7 +17,8 @@ import pytorch_lightning as pl
 
 import sys
 
-from models.unetv1 import HybridUNet
+#from models.unetv1 import HybridQuantum
+from models.modelv1 import HybridQuantum
 
 sys.path += [".", ".."]
 
@@ -119,7 +120,9 @@ def main():
     print("Step 4: Creating Hybrid Model")
     print("=" * 60 + "\n")
 
-    model = HybridUNet(config, in_ch=3, out_ch=10)
+    #model = HybridQuantum(config, in_ch=3, out_ch=10) #unet
+    model = HybridQuantum(config, out_ch=10)
+
     # model = HybridQuantumClassifier(config, quantum_device)
     # model.print_model_info()
 
@@ -141,7 +144,7 @@ def main():
 
     class_names = list(label_to_idx_map.keys())
 
-    test_results = trainer.test(model, test_loader)
+    test_results  = test_model(model, trainer, test_loader, class_names)
     
     test_metrics = {
         'accuracy': test_results[0]['test_acc'],
