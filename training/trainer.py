@@ -105,8 +105,9 @@ def test_model(model, trainer, test_loader, class_names):
     metrics = compute_metrics(preds_tensor, targets_tensor, model.num_classes)
 
     # Accuracy y F1 con sklearn
-    preds_np = torch.argmax(preds_tensor, dim=1).cpu().numpy()
-    targets_np = targets_tensor.cpu().numpy()
+    preds_np = torch.argmax(preds_tensor, dim=1).cpu().numpy().flatten().astype(int)
+    targets_np = targets_tensor.cpu().numpy().flatten().astype(int)
+
     test_acc = accuracy_score(targets_np, preds_np)
     test_f1 = f1_score(targets_np, preds_np, average='weighted')
 
