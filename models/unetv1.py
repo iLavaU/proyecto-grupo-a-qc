@@ -11,6 +11,7 @@ n_qubits = 8
 n_layers = 2
 dev = qml.device("default.qubit", wires=n_qubits)
 
+
 @qml.qnode(dev, interface="torch")
 def quantum_circuit(inputs, weights):
     for i in range(n_qubits):
@@ -21,6 +22,7 @@ def quantum_circuit(inputs, weights):
         for i in range(n_qubits - 1):
             qml.CNOT(wires=[i, i + 1])
     return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
+
 
 class QuantumLayer(nn.Module):
     def __init__(self, n_qubits=8):
@@ -36,6 +38,7 @@ class QuantumLayer(nn.Module):
             outputs.append(q_out)
         return torch.stack(outputs)
 
+
 class ConvResBlock(nn.Module):
     def __init__(self, in_ch, out_ch):
         super().__init__()
@@ -47,17 +50,15 @@ class ConvResBlock(nn.Module):
 
         self.relu = nn.ReLU(inplace=True)
 
-        self.shortcut = (
-            nn.Conv2d(in_ch, out_ch, 1, bias=False)
-            if in_ch != out_ch else nn.Identity()
-        )
+        self.shortcut = nn.Conv2d(in_ch, out_ch, 1, bias=False) if in_ch != out_ch else nn.Identity()
 
     def forward(self, x):
         out = self.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
         out = out + self.shortcut(x)
         return self.relu(out)
-    
+
+
 class ResidualMLP(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -71,6 +72,7 @@ class ResidualMLP(nn.Module):
         out = self.ln2(self.fc2(out))
         return F.relu(out + x)
 
+
 class TverskyLoss(nn.Module):
     def __init__(self, alpha=0.5, beta=0.5, smooth=1e-6):
         super().__init__()
@@ -82,9 +84,9 @@ class TverskyLoss(nn.Module):
         num_classes = logits.shape[1]
         targets_one_hot = F.one_hot(targets, num_classes).permute(0, 3, 1, 2).float()
         probs = F.softmax(logits, dim=1)
-        TP = (probs * targets_one_hot).sum(dim=(0,2,3))
-        FN = ((1 - probs) * targets_one_hot).sum(dim=(0,2,3))
-        FP = (probs * (1 - targets_one_hot)).sum(dim=(0,2,3))
+        TP = (probs * targets_one_hot).sum(dim=(0, 2, 3))
+        FN = ((1 - probs) * targets_one_hot).sum(dim=(0, 2, 3))
+        FP = (probs * (1 - targets_one_hot)).sum(dim=(0, 2, 3))
         tversky = (TP + self.smooth) / (TP + self.alpha * FN + self.beta * FP + self.smooth)
         loss = 1 - tversky.mean()
         return loss
@@ -104,86 +106,65 @@ class HybridQuantum(LightningModule):
         self.test_preds = []
         self.test_targets = []
 
-        self.qc = QuantumLayer(n_qubits=n_qubits)
-
+        # Encoder
         self.enc1 = ConvResBlock(in_ch, 8)
         self.enc2 = ConvResBlock(8, 16)
         self.enc3 = ConvResBlock(16, 32)
         self.pool = nn.MaxPool2d(2)
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((4,4))
-        self.mlp1 = nn.Sequential(
-            nn.Linear(32*4*4, 128),
-            nn.LayerNorm(128),
-            nn.ReLU()
-        )
-        self.mlp2 = nn.Sequential(
-            nn.Linear(128, 128),
-            nn.LayerNorm(128),
-            nn.ReLU()
-        )
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4))
+        self.mlp1 = nn.Sequential(nn.Linear(32 * 4 * 4, 128), nn.LayerNorm(128), nn.ReLU())
+        self.mlp2 = nn.Sequential(nn.Linear(128, 128), nn.LayerNorm(128), nn.ReLU())
+        self.mlp3 = nn.Sequential(nn.Linear(128, n_qubits), nn.LayerNorm(n_qubits))
 
-        self.mlp3 = nn.Sequential(
-            nn.Linear(128, n_qubits),
-            nn.LayerNorm(n_qubits)
-        )
+        # Circuit
+        self.qc = QuantumLayer(n_qubits=n_qubits)
 
-        self.mlp4 = nn.Sequential(
-            nn.Linear(n_qubits, 128),
-            nn.LayerNorm(128),
-            nn.ReLU()
-        )
-
-        self.mlp5 = nn.Sequential(
-            nn.Linear(128, 128),
-            nn.LayerNorm(128),
-            nn.ReLU()
-        )
-
-        self.mlp6 = nn.Sequential(
-            nn.Linear(128, n_qubits),
-            nn.LayerNorm(n_qubits)
-        )
-        self.fc_expand = nn.Linear(n_qubits*3, 32*4*4)
-        self.dec3 = ConvResBlock(32+32, 16)
-        self.dec2 = ConvResBlock(16+16, 8)
+        # Decoder
+        self.mlp4 = nn.Sequential(nn.Linear(n_qubits, 128), nn.LayerNorm(128), nn.ReLU())
+        self.mlp5 = nn.Sequential(nn.Linear(128, 128), nn.LayerNorm(128), nn.ReLU())
+        self.mlp6 = nn.Sequential(nn.Linear(128, n_qubits), nn.LayerNorm(n_qubits))
+        self.fc_expand = nn.Linear(n_qubits * 3, 32 * 4 * 4)
+        self.dec3 = ConvResBlock(32 + 32, 16)
+        self.dec2 = ConvResBlock(16 + 16, 8)
         self.dec1 = nn.Conv2d(8, out_ch, 1)
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, x):
-        x1 = self.enc1(x)
-        x2 = self.enc2(self.pool(x1))
-        x3 = self.enc3(self.pool(x2))
+        # Input shape: [(32, 3, 640, 640)]
+        # Encoder
+        x1 = self.enc1(x) # [(32, 8, 640, 640)] -> [(32, 8, 640, 640)]
+        x2 = self.enc2(self.pool(x1)) # [(32, 8, 640, 640)] -> [[32, 16, 320, 320]] 
+        x3 = self.enc3(self.pool(x2)) # [(32, 16, 320, 320)] -> [(32, 32, 160, 160)]
+        batch_size = x3.shape[0]
+        x3_pooled = self.adaptive_pool(x3) # [(32, 32, 160, 160)] -> [(32, 32, 4, 4)]
+        x_flat = x3_pooled.view(batch_size, -1) # [(32, 32, 4, 4)] -> [(32, 32*4*4)] | [(32, 512)]
 
-        B = x3.shape[0]
-        x3_pooled = self.adaptive_pool(x3)
-        x_flat = x3_pooled.view(B, -1)
+        # Encoder MLP
+        x1_m = self.mlp1(x_flat) # [(32, 512)] -> [(32, 128)]
+        x2_m = self.mlp2(x1_m) # [(32, 128)] -> [(32, 128)]
+        x3_m = self.mlp3(x2_m) # [(32, 128)] -> [(32, 8)]
 
-        # ----- MLP encoder -----
-        x1_m = self.mlp1(x_flat)
-        x2_m = self.mlp2(x1_m)
-        x3_m = self.mlp3(x2_m)
+        # Quantum circuit
+        x_q = self.qc(torch.tanh(x3_m) * torch.pi) # [(32, 8)] -> [(32, 8)]
 
-        # ----- Quantum -----
-        x_q = self.qc(torch.tanh(x3_m) * torch.pi)
+        # Decoder MLP
+        x4_m = self.mlp4(x_q) # [(32, 8)] -> [(32, 128)]
+        x5_m = self.mlp5(x4_m) # [(32, 128)] -> [(32, 128)]
+        x6_m = self.mlp6(x5_m) # [(32, 128)] -> [(32, 8)]
 
-        # ----- MLP decoder -----
-        x4_m = self.mlp4(x_q)
-        x5_m = self.mlp5(x4_m)
-        x6_m = self.mlp6(x5_m)
+        # Fusion of CNN and Quantum features
+        x_cat = torch.cat([x3_m, x6_m, x_q], dim=1) # [(32, 8)] + [(32, 8)] + [(32, 8)] -> [(32, 24)]
+        x_latent = self.fc_expand(x_cat).view(batch_size, 32, 4, 4) # [(32, 24)] -> [(32, 32*4*4)] -> [(32, 32, 4, 4)]
 
-        # ----- Fusion -----
-        x_cat = torch.cat([x3_m, x6_m, x_q], dim=1)
-        x_latent = self.fc_expand(x_cat).view(B, 32, 4, 4)
-
-        # ----- Decoder CNN -----
+        # Decoder
         x_up = F.interpolate(x_latent, size=x3.shape[2:], mode="nearest")
-        x_up = self.dec3(torch.cat([x_up, x3], dim=1))
-
+        x_up = self.dec3(torch.cat([x_up, x3], dim=1)) # [(32, 32, 4, 4)] -> [(32, 32, 160, 160)]
         x_up = F.interpolate(x_up, size=x2.shape[2:], mode="nearest")
-        x_up = self.dec2(torch.cat([x_up, x2], dim=1))
-
+        x_up = self.dec2(torch.cat([x_up, x2], dim=1)) # [(32, 32, 160, 160)] -> [(32, 16, 320, 320)]
         x_up = F.interpolate(x_up, size=x1.shape[2:], mode="nearest")
-        return self.dec1(x_up)
+        x_up = self.dec1(x_up) # [(32, 16, 320, 320)] -> [(32, 10, 640, 640)]
+
+        return x_up
 
     def training_step(self, batch, batch_idx):
         x, y = batch
